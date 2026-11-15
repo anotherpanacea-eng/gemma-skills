@@ -245,12 +245,15 @@ def run_response_distillation(
         args.ollama_model,
     )
     for i, p in enumerate(prompts, 1):
-      logger.info(
-          "[%d/%d] Generating response for prompt: %s...",
-          i,
-          len(prompts),
-          p[:60],
-      )
+      if args.show_samples:
+        logger.info(
+            "[%d/%d] Generating response for prompt: %s...",
+            i,
+            len(prompts),
+            p[:60],
+        )
+      else:
+        logger.info("[%d/%d] Generating response.", i, len(prompts))
       messages = []
       if args.system_prompt:
         messages.append({"role": "system", "content": args.system_prompt})
@@ -282,18 +285,22 @@ def run_response_distillation(
     )
     transformers = importlib.import_module("transformers")
     for i, p in enumerate(prompts, 1):
-      logger.info(
-          "[%d/%d] Generating response for prompt: %s...",
-          i,
-          len(prompts),
-          p[:60],
-      )
+      if args.show_samples:
+        logger.info(
+            "[%d/%d] Generating response for prompt: %s...",
+            i,
+            len(prompts),
+            p[:60],
+        )
+      else:
+        logger.info("[%d/%d] Generating response.", i, len(prompts))
       config_obj.max_new_tokens = args.max_new_tokens
       config_obj.temperature = args.temperature
-      gen_kwargs = dict(
-          generation_config=config_obj,
-          streamer=transformers.TextStreamer(pipeline_obj.tokenizer),
-      )
+      gen_kwargs = dict(generation_config=config_obj)
+      if args.show_samples:
+        gen_kwargs["streamer"] = transformers.TextStreamer(
+            pipeline_obj.tokenizer
+        )
       response = generate_response_hf(
           pipeline_obj=pipeline_obj,
           gen_kwargs=gen_kwargs,
@@ -400,7 +407,8 @@ def run_self_instruct_synthesis(
           temp=args.temperature,
           max_tokens=args.max_new_tokens,
       )
-      print(raw_response)
+      if args.show_samples:
+        print(raw_response)
 
       # Clean up potential markdown wrappers
       cleaned = raw_response.strip()
@@ -426,11 +434,14 @@ def run_self_instruct_synthesis(
             "Added %d synthetic samples from batch %d.", len(batch_data), b
         )
       else:
-        logger.warning(
-            "Batch %d did not return a list. Response content: %s",
-            b,
-            cleaned[:100],
-        )
+        if args.show_samples:
+          logger.warning(
+              "Batch %d did not return a list. Response content: %s",
+              b,
+              cleaned[:100],
+          )
+        else:
+          logger.warning("Batch %d did not return a JSON list.", b)
   else:
     pipeline_obj, config_obj = init_hf_pipeline(
         args.model, not args.force_no_qlora
@@ -439,10 +450,11 @@ def run_self_instruct_synthesis(
     for b in range(1, num_batches + 1):
       config_obj.max_new_tokens = args.max_new_tokens
       config_obj.temperature = args.temperature
-      gen_kwargs = dict(
-          generation_config=config_obj,
-          streamer=transformers.TextStreamer(pipeline_obj.tokenizer),
-      )
+      gen_kwargs = dict(generation_config=config_obj)
+      if args.show_samples:
+        gen_kwargs["streamer"] = transformers.TextStreamer(
+            pipeline_obj.tokenizer
+        )
 
       logger.info("Processing batch %d/%d...", b, num_batches)
       raw_response = generate_response_hf(
@@ -471,11 +483,14 @@ def run_self_instruct_synthesis(
             "Added %d synthetic samples from batch %d.", len(batch_data), b
         )
       else:
-        logger.warning(
-            "Batch %d did not return a list. Response content: %s",
-            b,
-            cleaned[:100],
-        )
+        if args.show_samples:
+          logger.warning(
+              "Batch %d did not return a list. Response content: %s",
+              b,
+              cleaned[:100],
+          )
+        else:
+          logger.warning("Batch %d did not return a JSON list.", b)
 
   # Truncate to exact user requested samples
   return dataset[: args.num_samples]
@@ -556,6 +571,15 @@ def main() -> None:
   )
   parser.add_argument(
       "--force-no-qlora", action="store_true", help="Disable QLoRA"
+  )
+  parser.add_argument(
+      "--show-samples",
+      action="store_true",
+      help=(
+          "Echo prompts and generated text to the console while generating."
+          " Off by default so private seed prompts and outputs stay out of"
+          " logs."
+      ),
   )
 
   # Ollama Options
